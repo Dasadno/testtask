@@ -11,7 +11,7 @@ import (
 )
 
 // NewRouter собирает gin-роутер со всеми middleware и маршрутами.
-func NewRouter(log *slog.Logger, env string) *gin.Engine {
+func NewRouter(log *slog.Logger, env string, subscriptions *SubscriptionHandler) *gin.Engine {
 	if env != config.EnvLocal {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -22,6 +22,9 @@ func NewRouter(log *slog.Logger, env string) *gin.Engine {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	api := router.Group("/api/v1")
+	subscriptions.Register(api)
 
 	return router
 }

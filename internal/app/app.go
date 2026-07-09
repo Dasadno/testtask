@@ -14,6 +14,7 @@ import (
 	"github.com/Dasadno/testtask/internal/config"
 	"github.com/Dasadno/testtask/internal/logger"
 	"github.com/Dasadno/testtask/internal/repository/postgres"
+	"github.com/Dasadno/testtask/internal/service"
 	transport "github.com/Dasadno/testtask/internal/transport/http"
 )
 
@@ -45,9 +46,13 @@ func Run(configPath string) error {
 	defer pool.Close()
 	log.Info("connected to postgres")
 
+	repo := postgres.NewSubscriptionRepo(pool)
+	svc := service.NewSubscriptionService(repo, log)
+	handler := transport.NewSubscriptionHandler(svc, log)
+
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.HTTP.Port),
-		Handler:      transport.NewRouter(log, cfg.Env),
+		Handler:      transport.NewRouter(log, cfg.Env, handler),
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.HTTP.IdleTimeout,
