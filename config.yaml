@@ -6,3 +6,11 @@ http:
   write_timeout: 10s
   idle_timeout: 60s
   shutdown_timeout: 10s
+
+postgres:
+  host: localhost
+  port: 5432
+  user: postgres
+  database: subscriptions
+  ssl_mode: disable
+  migrations_path: env/migrations
