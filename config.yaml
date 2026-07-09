@@ -1,0 +1,8 @@
+env: local
+
+http:
+  port: 8080
+  read_timeout: 5s
+  write_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 10s

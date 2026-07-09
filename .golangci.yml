@@ -1,0 +1,21 @@
+version: "2"
+
+run:
+  timeout: 3m
+
+linters:
+  # errcheck, govet, ineffassign, staticcheck, unused включены по умолчанию
+  enable:
+    - gocritic
+    - revive
+    - errorlint
+    - misspell
+    - unconvert
+    - unparam
+    - gosec
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
