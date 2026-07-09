@@ -9,6 +9,10 @@ import (
 	"github.com/Dasadno/testtask/internal/app"
 )
 
+// @title       Subscriptions API
+// @version     1.0
+// @description REST-сервис для агрегации данных об онлайн-подписках пользователей.
+// @BasePath    /api/v1
 func main() {
 	configPath := flag.String("config", envOrDefault("CONFIG_PATH", "config.yaml"), "path to config file")
 	flag.Parse()

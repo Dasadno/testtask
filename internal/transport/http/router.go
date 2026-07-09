@@ -6,7 +6,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	swaggerfiles "github.com/swaggo/files"
+	ginswagger "github.com/swaggo/gin-swagger"
 
+	// Регистрация сгенерированной swagger-спецификации.
+	_ "github.com/Dasadno/testtask/api"
 	"github.com/Dasadno/testtask/internal/config"
 )
 
@@ -22,6 +26,7 @@ func NewRouter(log *slog.Logger, env string, subscriptions *SubscriptionHandler)
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+	router.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 
 	api := router.Group("/api/v1")
 	subscriptions.Register(api)

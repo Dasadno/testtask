@@ -12,11 +12,11 @@ import (
 // subscriptionRequest — тело запроса на создание/полное обновление подписки.
 // Обязательные поля объявлены указателями, чтобы отличать «не передано» от нулевого значения.
 type subscriptionRequest struct {
-	ServiceName string            `json:"service_name" binding:"required"`
-	Price       *int              `json:"price" binding:"required"`
-	UserID      string            `json:"user_id" binding:"required,uuid"`
-	StartDate   *models.MonthYear `json:"start_date" binding:"required"`
-	EndDate     *models.MonthYear `json:"end_date"`
+	ServiceName string            `json:"service_name" binding:"required" example:"Yandex Plus"`
+	Price       *int              `json:"price" binding:"required" example:"400"`
+	UserID      string            `json:"user_id" binding:"required,uuid" example:"60601fee-2bf1-4721-ae6f-7636e79a0cba"`
+	StartDate   *models.MonthYear `json:"start_date" binding:"required" swaggertype:"string" example:"07-2025"`
+	EndDate     *models.MonthYear `json:"end_date" swaggertype:"string" example:"12-2025"`
 }
 
 // toModel собирает доменную модель; id заполняется вызывающей стороной при обновлении.
@@ -85,19 +85,19 @@ func (q costQuery) toFilter() (models.CostFilter, error) {
 
 // costResponse — ответ ручки подсчёта стоимости: эхо периода и итоговая сумма.
 type costResponse struct {
-	From      models.MonthYear `json:"from"`
-	To        models.MonthYear `json:"to"`
-	TotalCost int64            `json:"total_cost"`
+	From      models.MonthYear `json:"from" swaggertype:"string" example:"01-2025"`
+	To        models.MonthYear `json:"to" swaggertype:"string" example:"06-2025"`
+	TotalCost int64            `json:"total_cost" example:"1800"`
 }
 
 // subscriptionResponse — представление подписки в API.
 type subscriptionResponse struct {
-	ID          uuid.UUID         `json:"id"`
-	ServiceName string            `json:"service_name"`
-	Price       int               `json:"price"`
-	UserID      uuid.UUID         `json:"user_id"`
-	StartDate   models.MonthYear  `json:"start_date"`
-	EndDate     *models.MonthYear `json:"end_date,omitempty"`
+	ID          uuid.UUID         `json:"id" example:"93af4a3e-6f34-4502-a3cf-23dd81c86f1e"`
+	ServiceName string            `json:"service_name" example:"Yandex Plus"`
+	Price       int               `json:"price" example:"400"`
+	UserID      uuid.UUID         `json:"user_id" example:"60601fee-2bf1-4721-ae6f-7636e79a0cba"`
+	StartDate   models.MonthYear  `json:"start_date" swaggertype:"string" example:"07-2025"`
+	EndDate     *models.MonthYear `json:"end_date,omitempty" swaggertype:"string" example:"12-2025"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 }
@@ -130,5 +130,5 @@ func toListResponse(subs []models.Subscription) listSubscriptionsResponse {
 
 // errorResponse — единый формат ошибок API.
 type errorResponse struct {
-	Error string `json:"error"`
+	Error string `json:"error" example:"subscription not found"`
 }
