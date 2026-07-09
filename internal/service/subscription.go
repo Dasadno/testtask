@@ -25,6 +25,7 @@ type SubscriptionRepository interface {
 	Update(ctx context.Context, sub models.Subscription) (models.Subscription, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, filter models.SubscriptionFilter) ([]models.Subscription, error)
+	TotalCost(ctx context.Context, filter models.CostFilter) (int64, error)
 }
 
 // SubscriptionService реализует бизнес-логику работы с подписками.
@@ -112,4 +113,24 @@ func (s *SubscriptionService) List(ctx context.Context, filter models.Subscripti
 	}
 
 	return subs, nil
+}
+
+// TotalCost считает суммарную стоимость подписок за период с учётом фильтров.
+func (s *SubscriptionService) TotalCost(ctx context.Context, filter models.CostFilter) (int64, error) {
+	if err := filter.Validate(); err != nil {
+		return 0, err
+	}
+
+	total, err := s.repo.TotalCost(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("total cost: %w", err)
+	}
+
+	s.log.InfoContext(ctx, "total cost calculated",
+		slog.String("from", filter.From.String()),
+		slog.String("to", filter.To.String()),
+		slog.Int64("total", total),
+	)
+
+	return total, nil
 }

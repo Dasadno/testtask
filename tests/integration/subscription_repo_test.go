@@ -137,6 +137,95 @@ func TestSubscriptionRepo_CRUDL(t *testing.T) {
 	}
 }
 
+func TestSubscriptionRepo_TotalCost(t *testing.T) {
+	repo := setupRepo(t)
+	ctx := context.Background()
+	// Уникальный пользователь изолирует тест от чужих данных в таблице.
+	userID := uuid.New()
+
+	create := func(name string, price int, start models.MonthYear, end *models.MonthYear) {
+		t.Helper()
+		created, err := repo.Create(ctx, models.Subscription{
+			ServiceName: name,
+			Price:       price,
+			UserID:      userID,
+			StartDate:   start,
+			EndDate:     end,
+		})
+		if err != nil {
+			t.Fatalf("create fixture %s: %v", name, err)
+		}
+		t.Cleanup(func() { _ = repo.Delete(ctx, created.ID) })
+	}
+
+	end := func(y int, m time.Month) *models.MonthYear {
+		v := models.NewMonthYear(y, m)
+		return &v
+	}
+
+	// Сценарий из дизайн-дока + подписки, не попадающие в период.
+	create("Yandex Plus", 400, models.NewMonthYear(2025, time.February), end(2025, time.April)) // 3 мес × 400
+	create("Netflix", 300, models.NewMonthYear(2025, time.May), nil)                            // бессрочная: 05,06 → 2 × 300
+	create("Spotify", 200, models.NewMonthYear(2024, time.January), end(2024, time.December))   // закончилась до периода
+	create("Ivi", 100, models.NewMonthYear(2025, time.July), nil)                               // начнётся после периода
+
+	from := models.NewMonthYear(2025, time.January)
+	to := models.NewMonthYear(2025, time.June)
+
+	tests := []struct {
+		name    string
+		filter  models.CostFilter
+		want    int64
+	}{
+		{
+			name:   "period sums overlap months only",
+			filter: models.CostFilter{From: from, To: to, UserID: &userID},
+			want:   3*400 + 2*300, // 1800
+		},
+		{
+			name: "filter by service name",
+			filter: models.CostFilter{
+				From: from, To: to, UserID: &userID,
+				ServiceName: strPtr("Netflix"),
+			},
+			want: 600,
+		},
+		{
+			name:   "single month period",
+			filter: models.CostFilter{From: models.NewMonthYear(2025, time.March), To: models.NewMonthYear(2025, time.March), UserID: &userID},
+			want:   400, // только Yandex Plus активна в марте
+		},
+		{
+			name: "wide period counts unbounded subscription till period end",
+			filter: models.CostFilter{
+				From: models.NewMonthYear(2025, time.January), To: models.NewMonthYear(2025, time.December),
+				UserID: &userID,
+			},
+			// Yandex Plus: 3×400; Netflix: 05..12 = 8×300; Ivi: 07..12 = 6×100
+			want: 1200 + 2400 + 600,
+		},
+		{
+			name:   "no matches returns zero",
+			filter: models.CostFilter{From: models.NewMonthYear(2020, time.January), To: models.NewMonthYear(2020, time.December), UserID: &userID},
+			want:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := repo.TotalCost(ctx, tt.filter)
+			if err != nil {
+				t.Fatalf("TotalCost() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("TotalCost() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
 func TestSubscriptionRepo_GetByID_NotFound(t *testing.T) {
 	repo := setupRepo(t)
 

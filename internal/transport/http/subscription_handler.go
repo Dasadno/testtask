@@ -19,6 +19,7 @@ type SubscriptionService interface {
 	Update(ctx context.Context, sub models.Subscription) (models.Subscription, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, filter models.SubscriptionFilter) ([]models.Subscription, error)
+	TotalCost(ctx context.Context, filter models.CostFilter) (int64, error)
 }
 
 // SubscriptionHandler обслуживает HTTP-ручки CRUDL по подпискам.
@@ -37,9 +38,32 @@ func (h *SubscriptionHandler) Register(rg *gin.RouterGroup) {
 	subs := rg.Group("/subscriptions")
 	subs.POST("", h.create)
 	subs.GET("", h.list)
+	subs.GET("/cost", h.totalCost)
 	subs.GET("/:id", h.get)
 	subs.PUT("/:id", h.update)
 	subs.DELETE("/:id", h.delete)
+}
+
+func (h *SubscriptionHandler) totalCost(c *gin.Context) {
+	var query costQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		h.respondBadRequest(c, err)
+		return
+	}
+
+	filter, err := query.toFilter()
+	if err != nil {
+		h.respondBadRequest(c, err)
+		return
+	}
+
+	total, err := h.svc.TotalCost(c.Request.Context(), filter)
+	if err != nil {
+		h.respondServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, costResponse{From: filter.From, To: filter.To, TotalCost: total})
 }
 
 func (h *SubscriptionHandler) create(c *gin.Context) {
@@ -147,7 +171,7 @@ func (h *SubscriptionHandler) respondServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, models.ErrSubscriptionNotFound):
 		c.JSON(http.StatusNotFound, errorResponse{Error: models.ErrSubscriptionNotFound.Error()})
-	case errors.Is(err, models.ErrInvalidSubscription):
+	case errors.Is(err, models.ErrInvalidSubscription), errors.Is(err, models.ErrInvalidPeriod):
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 	default:
 		// Внутренние детали наружу не отдаём, но логируем с контекстом запроса.

@@ -25,6 +25,7 @@ type serviceMock struct {
 	updateFn func(ctx context.Context, sub models.Subscription) (models.Subscription, error)
 	deleteFn func(ctx context.Context, id uuid.UUID) error
 	listFn   func(ctx context.Context, filter models.SubscriptionFilter) ([]models.Subscription, error)
+	costFn   func(ctx context.Context, filter models.CostFilter) (int64, error)
 }
 
 func (m *serviceMock) Create(ctx context.Context, sub models.Subscription) (models.Subscription, error) {
@@ -45,6 +46,10 @@ func (m *serviceMock) Delete(ctx context.Context, id uuid.UUID) error {
 
 func (m *serviceMock) List(ctx context.Context, filter models.SubscriptionFilter) ([]models.Subscription, error) {
 	return m.listFn(ctx, filter)
+}
+
+func (m *serviceMock) TotalCost(ctx context.Context, filter models.CostFilter) (int64, error) {
+	return m.costFn(ctx, filter)
 }
 
 func newTestRouter(svc *serviceMock) http.Handler {
@@ -223,6 +228,83 @@ func TestUpdateSubscription_PassesPathID(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200; body: %s", rec.Code, rec.Body)
 	}
+}
+
+func TestTotalCost(t *testing.T) {
+	userID := uuid.New()
+
+	t.Run("ok with all filters", func(t *testing.T) {
+		var got models.CostFilter
+		svc := &serviceMock{
+			costFn: func(_ context.Context, f models.CostFilter) (int64, error) {
+				got = f
+				return 1800, nil
+			},
+		}
+
+		target := "/api/v1/subscriptions/cost?from=01-2025&to=06-2025&user_id=" + userID.String() + "&service_name=Yandex+Plus"
+		rec := doRequest(t, newTestRouter(svc), http.MethodGet, target, "")
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body)
+		}
+		if got.From.String() != "01-2025" || got.To.String() != "06-2025" {
+			t.Errorf("period = %s..%s, want 01-2025..06-2025", got.From, got.To)
+		}
+		if got.UserID == nil || *got.UserID != userID {
+			t.Errorf("filter.UserID = %v, want %s", got.UserID, userID)
+		}
+		if got.ServiceName == nil || *got.ServiceName != "Yandex Plus" {
+			t.Errorf("filter.ServiceName = %v, want Yandex Plus", got.ServiceName)
+		}
+
+		var resp map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("invalid response json: %v", err)
+		}
+		if resp["total_cost"] != float64(1800) {
+			t.Errorf("total_cost = %v, want 1800", resp["total_cost"])
+		}
+		if resp["from"] != "01-2025" || resp["to"] != "06-2025" {
+			t.Errorf("period echo = %v..%v", resp["from"], resp["to"])
+		}
+	})
+
+	t.Run("bad request", func(t *testing.T) {
+		svc := &serviceMock{
+			costFn: func(context.Context, models.CostFilter) (int64, error) {
+				t.Fatal("service must not be called")
+				return 0, nil
+			},
+		}
+		router := newTestRouter(svc)
+
+		for _, target := range []string{
+			"/api/v1/subscriptions/cost",                             // нет from и to
+			"/api/v1/subscriptions/cost?from=01-2025",                // нет to
+			"/api/v1/subscriptions/cost?from=2025-01&to=06-2025",     // кривой формат from
+			"/api/v1/subscriptions/cost?from=01-2025&to=13-2025",     // несуществующий месяц
+			"/api/v1/subscriptions/cost?from=01-2025&to=06-2025&user_id=oops", // кривой uuid
+		} {
+			rec := doRequest(t, router, http.MethodGet, target, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%s: status = %d, want 400; body: %s", target, rec.Code, rec.Body)
+			}
+		}
+	})
+
+	t.Run("invalid period maps to 400", func(t *testing.T) {
+		svc := &serviceMock{
+			costFn: func(context.Context, models.CostFilter) (int64, error) {
+				return 0, fmt.Errorf("%w: to must not be before from", models.ErrInvalidPeriod)
+			},
+		}
+
+		rec := doRequest(t, newTestRouter(svc), http.MethodGet, "/api/v1/subscriptions/cost?from=06-2025&to=01-2025", "")
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400; body: %s", rec.Code, rec.Body)
+		}
+	})
 }
 
 func TestListSubscriptions(t *testing.T) {

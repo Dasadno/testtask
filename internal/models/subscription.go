@@ -30,3 +30,11 @@ type SubscriptionFilter struct {
 	Limit       int
 	Offset      int
 }
+
+// CostFilter — период и фильтры для подсчёта суммарной стоимости подписок.
+type CostFilter struct {
+	From        MonthYear
+	To          MonthYear
+	UserID      *uuid.UUID
+	ServiceName *string
+}

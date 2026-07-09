@@ -148,6 +148,51 @@ func (r *SubscriptionRepo) List(ctx context.Context, filter models.SubscriptionF
 	return subs, nil
 }
 
+// TotalCost считает суммарную стоимость подписок за период: для каждой подписки,
+// пересекающейся с периодом, месячная цена умножается на число месяцев пересечения
+// (границы включительно). Подписка без end_date считается активной бессрочно.
+func (r *SubscriptionRepo) TotalCost(ctx context.Context, filter models.CostFilter) (int64, error) {
+	var (
+		sb   strings.Builder
+		args []any
+	)
+
+	args = append(args, filter.From, filter.To)
+
+	// bounds — пересечение срока подписки с запрошенным периодом;
+	// число месяцев между двумя первыми числами месяцев считается включительно.
+	sb.WriteString(`
+		SELECT COALESCE(SUM(
+			price * (
+				(EXTRACT(YEAR FROM bounds.till)::int * 12 + EXTRACT(MONTH FROM bounds.till)::int) -
+				(EXTRACT(YEAR FROM bounds.since)::int * 12 + EXTRACT(MONTH FROM bounds.since)::int) + 1
+			)
+		), 0)::bigint
+		FROM subscriptions,
+		LATERAL (
+			SELECT GREATEST(start_date, $1::date) AS since,
+			       LEAST(COALESCE(end_date, $2::date), $2::date) AS till
+		) AS bounds
+		WHERE start_date <= $2::date
+		  AND (end_date IS NULL OR end_date >= $1::date)`)
+
+	if filter.UserID != nil {
+		args = append(args, *filter.UserID)
+		sb.WriteString(" AND user_id = $" + strconv.Itoa(len(args)))
+	}
+	if filter.ServiceName != nil {
+		args = append(args, *filter.ServiceName)
+		sb.WriteString(" AND service_name = $" + strconv.Itoa(len(args)))
+	}
+
+	var total int64
+	if err := r.pool.QueryRow(ctx, sb.String(), args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("sum subscriptions cost: %w", err)
+	}
+
+	return total, nil
+}
+
 func scanSubscription(row pgx.Row) (models.Subscription, error) {
 	var sub models.Subscription
 

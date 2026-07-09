@@ -21,6 +21,7 @@ type repoMock struct {
 	updateFn func(ctx context.Context, sub models.Subscription) (models.Subscription, error)
 	deleteFn func(ctx context.Context, id uuid.UUID) error
 	listFn   func(ctx context.Context, filter models.SubscriptionFilter) ([]models.Subscription, error)
+	costFn   func(ctx context.Context, filter models.CostFilter) (int64, error)
 }
 
 func (m *repoMock) Create(ctx context.Context, sub models.Subscription) (models.Subscription, error) {
@@ -41,6 +42,10 @@ func (m *repoMock) Delete(ctx context.Context, id uuid.UUID) error {
 
 func (m *repoMock) List(ctx context.Context, filter models.SubscriptionFilter) ([]models.Subscription, error) {
 	return m.listFn(ctx, filter)
+}
+
+func (m *repoMock) TotalCost(ctx context.Context, filter models.CostFilter) (int64, error) {
+	return m.costFn(ctx, filter)
 }
 
 func newService(repo *repoMock) *service.SubscriptionService {
@@ -163,6 +168,61 @@ func TestSubscriptionService_List_NormalizesPagination(t *testing.T) {
 					got.Limit, got.Offset, tt.wantLimit, tt.wantOffset)
 			}
 		})
+	}
+}
+
+func TestSubscriptionService_TotalCost_Validation(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter models.CostFilter
+	}{
+		{"missing from", models.CostFilter{To: models.NewMonthYear(2025, time.June)}},
+		{"missing to", models.CostFilter{From: models.NewMonthYear(2025, time.January)}},
+		{"to before from", models.CostFilter{
+			From: models.NewMonthYear(2025, time.June),
+			To:   models.NewMonthYear(2025, time.January),
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &repoMock{
+				costFn: func(context.Context, models.CostFilter) (int64, error) {
+					t.Fatal("repo must not be called on validation error")
+					return 0, nil
+				},
+			}
+
+			_, err := newService(repo).TotalCost(context.Background(), tt.filter)
+			if !errors.Is(err, models.ErrInvalidPeriod) {
+				t.Errorf("TotalCost() error = %v, want ErrInvalidPeriod", err)
+			}
+		})
+	}
+}
+
+func TestSubscriptionService_TotalCost_OK(t *testing.T) {
+	// Период из одного месяца (from == to) валиден.
+	filter := models.CostFilter{
+		From: models.NewMonthYear(2025, time.July),
+		To:   models.NewMonthYear(2025, time.July),
+	}
+
+	repo := &repoMock{
+		costFn: func(_ context.Context, f models.CostFilter) (int64, error) {
+			if f != filter {
+				t.Errorf("repo received %+v, want %+v", f, filter)
+			}
+			return 1800, nil
+		},
+	}
+
+	total, err := newService(repo).TotalCost(context.Background(), filter)
+	if err != nil {
+		t.Fatalf("TotalCost() error = %v", err)
+	}
+	if total != 1800 {
+		t.Errorf("TotalCost() = %d, want 1800", total)
 	}
 }
 

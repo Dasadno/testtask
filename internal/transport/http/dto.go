@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,6 +51,43 @@ func (q listSubscriptionsQuery) toFilter() models.SubscriptionFilter {
 		filter.ServiceName = &q.ServiceName
 	}
 	return filter
+}
+
+// costQuery — параметры подсчёта суммарной стоимости.
+// Даты разбираются вручную: form-биндинг, в отличие от JSON, не умеет кастомные типы.
+type costQuery struct {
+	From        string `form:"from" binding:"required"`
+	To          string `form:"to" binding:"required"`
+	UserID      string `form:"user_id" binding:"omitempty,uuid"`
+	ServiceName string `form:"service_name"`
+}
+
+func (q costQuery) toFilter() (models.CostFilter, error) {
+	from, err := models.ParseMonthYear(q.From)
+	if err != nil {
+		return models.CostFilter{}, fmt.Errorf("from: %w", err)
+	}
+	to, err := models.ParseMonthYear(q.To)
+	if err != nil {
+		return models.CostFilter{}, fmt.Errorf("to: %w", err)
+	}
+
+	filter := models.CostFilter{From: from, To: to}
+	if q.UserID != "" {
+		id := uuid.MustParse(q.UserID) // формат проверен binding-тегом uuid
+		filter.UserID = &id
+	}
+	if q.ServiceName != "" {
+		filter.ServiceName = &q.ServiceName
+	}
+	return filter, nil
+}
+
+// costResponse — ответ ручки подсчёта стоимости: эхо периода и итоговая сумма.
+type costResponse struct {
+	From      models.MonthYear `json:"from"`
+	To        models.MonthYear `json:"to"`
+	TotalCost int64            `json:"total_cost"`
 }
 
 // subscriptionResponse — представление подписки в API.
